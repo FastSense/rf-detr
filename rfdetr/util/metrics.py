@@ -248,7 +248,7 @@ class MetricsWandBSink:
         if 'test_coco_eval_bbox' in values:
             coco_eval = values['test_coco_eval_bbox']
             ap50_90 = safe_index(coco_eval, 0)
-            ap50 = safe_index(coco_eval, 1)
+            #ap50 = safe_index(coco_eval, 1)
             ar50_90 = safe_index(coco_eval, 6)
             f1_50_90 = 2*(ap50_90*ar50_90)/(ap50_90+ar50_90)
             
@@ -256,8 +256,8 @@ class MetricsWandBSink:
             
             if ap50_90 is not None:
                 log_dict["Metrics/Base/AP50_90"] = ap50_90
-            if ap50 is not None:
-                log_dict["Metrics/Base/AP50"] = ap50
+            #if ap50 is not None:
+            #    log_dict["Metrics/Base/AP50"] = ap50
             if ar50_90 is not None:
                 log_dict["Metrics/Base/AR50_90"] = ar50_90
 
