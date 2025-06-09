@@ -45,6 +45,8 @@ from logging import getLogger
 import shutil
 from rfdetr.util.files import download_file
 import os
+from rfdetr.config import TrainConfig
+
 if str(os.environ.get("USE_FILE_SYSTEM_SHARING", "False")).lower() in ["true", "1"]:
     import torch.multiprocessing
     torch.multiprocessing.set_sharing_strategy('file_system')
@@ -440,11 +442,11 @@ class Model:
         for callback in callbacks["on_train_end"]:
             callback()
     
-    def export(self, output_dir="output", infer_dir=None, simplify=False,  backbone_only=False, opset_version=17, verbose=True, force=False, shape=None, batch_size=1, **kwargs):
+    def export(self, config: TrainConfig, output_dir="output", infer_dir=None, simplify=False,  backbone_only=False, opset_version=17, verbose=True, force=False, shape=None, batch_size=1, **kwargs):
         """Export the trained model to ONNX format"""
         print(f"Exporting model to ONNX format")
         from rfdetr.deploy.export import export_onnx, onnx_simplify, make_infer_image
-
+        import onnx
 
         device = self.device
         model = deepcopy(self.model.to("cpu"))
@@ -501,7 +503,39 @@ class Model:
         
         print("ONNX export completed successfully")
         self.model = self.model.to(device)
+
+        import wandb
+        with open(config.ann_file, 'r') as file:
+            data_json = json.load(file)
+
+        labels = [i["name"] for i in data_json["categories"]]
+        model = onnx.load("/detr_train/output/inference_model.onnx")
+        metadata = model.metadata_props.add()
+        metadata.key = "labels"
+        metadata.value = json.dumps(labels)
+        onnx.save(model, "/detr_train/output/model_metadata.onnx")
+        if os.path.exists("/detr_train/output/model_metadata.onnx"):
+        #with wandb.init(id="test", resume="allow", project="detr_kudo") as run:       
+            art_model = wandb.Artifact("model_metadata.onnx", type='model')
+            art_model.add_file(local_path="/detr_train/output/model_metadata.onnx", name="model")
+            wandb.log_artifact(art_model)  
+            artifact = wandb.Artifact(name="checkpoint.pth", type="checkpoint")
+            artifact.add_file(local_path="/detr_train/output/checkpoint.pth", name="checkpoint")
+            wandb.log_artifact(artifact) 
             
+        #IMPORT TEST IMAGES TO WANDB
+        from rfdetr.util.detr_inf import process_images_from_folder
+        processed_20 = process_images_from_folder(
+            labelmap=labels, 
+            src_folder = config.dataset_dir, 
+            model_path = "/detr_train/output/model_metadata.onnx")
+        #print(len(processed_20))
+        examples = []
+        for i in range(len(processed_20)):      
+                image = wandb.Image(processed_20[i], caption=f"test_images")
+                examples.append(image)
+        wandb.log({"test_images": examples})
+        wandb.finish()            
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('LWDETR training and evaluation script', parents=[get_args_parser()])
